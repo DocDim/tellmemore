@@ -4,8 +4,8 @@ import os
 basedir = os.path.abspath(os.path.dirname(__file__))
 
 class Config:
-    SECRET_KEY = os.environ.get('SECRET_KEY', 'a-very-hard-to-guess-secret-key-for-tellmemore')
-    JWT_SECRET_KEY = os.environ.get('JWT_SECRET_KEY', 'a-very-hard-to-guess-jwt-secret-key-for-tellmemore')
+    SECRET_KEY = os.environ.get('SECRET_KEY', 'f7bd3a1f57a9ce1e2bc3e054fe8a2e95a3011c02eec49aa3b4936ef7133b8ff7')
+    JWT_SECRET_KEY = os.environ.get('JWT_SECRET_KEY', 'f7bd3a1f57a9ce1e2bc3e054fe8a2e95a3011c02eec49aa3b4936ef7133b8ff7')
 
     # PostgreSQL Configuration
     # Fallback to a default if DATABASE_URL not set in .env or environment
@@ -23,6 +23,8 @@ class DevelopmentConfig(Config):
     # If you want different local development URLs:
     # SQLALCHEMY_DATABASE_URI = 'postgresql://dev_user:dev_password@localhost:5432/tellmemore_dev_db'
     # MONGO_URI = 'mongodb://localhost:27017/tellmemore_dev_mongo_db'
+    SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL') 
+    MONGO_URI = os.environ.get('MONGO_URI') 
 
 class TestingConfig(Config):
     TESTING = True

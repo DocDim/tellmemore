@@ -12,7 +12,7 @@ db = SQLAlchemy()
 migrate = Migrate()
 jwt = JWTManager()
 cors = CORS()
-mongo = MongoEngine()
+mongo = MongoEngine()         
 
 def create_app(config_class):
     app = Flask(__name__)
@@ -21,8 +21,8 @@ def create_app(config_class):
     load_dotenv(os.path.join(os.path.dirname(os.path.dirname(__file__)), '.env'))
 
     app.config.update(
-        SQLALCHEMY_DATABASE_URI=os.getenv('postgresql+psycopg2://tmmdbuser:H0odBla$#2025@172.25.36.226:5432/tmmdb', app.config['SQLALCHEMY_DATABASE_URI']),
-        MONGO_URI=os.getenv('MONGO_URI', app.config['MONGO_URI']),
+        SQLALCHEMY_DATABASE_URI=os.getenv('postgresql://neondb_owner:npg_37ogzmSbAFwj@ep-square-unit-a8cybfqv-pooler.eastus2.azure.neon.tech:5432/neondb?sslmode=require&options=endpoint%3Dep-square-unit-a8cybfqv', app.config['SQLALCHEMY_DATABASE_URI']),
+        MONGO_URI=os.getenv('mongodb+srv://smartwrapperdb:w7pATE5xSGxuCNIL@smartwrapper.lpvdvlf.mongodb.net/tellmemoreDB', app.config['MONGO_URI']),
         SECRET_KEY=os.getenv('SECRET_KEY', app.config['SECRET_KEY']),
         JWT_SECRET_KEY=os.getenv('JWT_SECRET_KEY', app.config['JWT_SECRET_KEY'])
     )

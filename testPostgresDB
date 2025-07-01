@@ -1,0 +1,51 @@
+import psycopg2
+from psycopg2 import OperationalError
+
+# --- Configuration ---
+# Replace these with your PostgreSQL database credentials and connection details
+DB_HOST = "ep-square-unit-a8cybfqv-pooler.eastus2.azure.neon.tech"
+DB_NAME = "neondb"
+DB_USER = "neondb_owner"
+DB_PASSWORD = "npg_37ogzmSbAFwj"
+DB_PORT = "5432" # Default PostgreSQL port
+
+# Extract the endpoint ID from the DB_HOST
+ENDPOINT_ID = DB_HOST.split('-pooler')[0] # This will get 'ep-square-unit-a8cybfqv'
+
+def test_postgresql_connection():
+    """
+    Attempts to establish a connection to a PostgreSQL database and
+    prints the connection status.
+    """
+    conn = None
+    try:
+        print(f"Attempting to connect to PostgreSQL database '{DB_NAME}' on {DB_HOST}:{DB_PORT} with SSL and Endpoint ID...")
+        conn = psycopg2.connect(
+            host=DB_HOST,
+            database=DB_NAME,
+            user=DB_USER,
+            password=DB_PASSWORD,
+            port=DB_PORT,
+            sslmode='require',
+            options=f'endpoint={ENDPOINT_ID}' # <--- REMOVED '-c' here
+        )
+        print("✅ Successfully connected to PostgreSQL database.")
+
+        # Optional: Execute a simple query to confirm database interaction
+        cursor = conn.cursor()
+        cursor.execute("SELECT version();")
+        db_version = cursor.fetchone()
+        print(f"PostgreSQL database version: {db_version[0]}")
+        cursor.close()
+
+    except OperationalError as e:
+        print(f"❌ Could not connect to PostgreSQL database: {e}")
+    except Exception as e:
+        print(f"An unexpected error occurred: {e}")
+    finally:
+        if conn:
+            conn.close()
+            print("Connection closed.")
+
+if __name__ == "__main__":
+    test_postgresql_connection()

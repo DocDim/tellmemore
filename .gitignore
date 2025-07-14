@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
@@ -172,3 +173,11 @@ cython_debug/
 
 # PyPI configuration file
 .pypirc
+=======
+# --- File: .gitignore (Example) ---
+__pycache__/
+.env
+*.pyc
+*.pyo
+*~
+>>>>>>> 7835694 (first commit from local repositery on 07-14-2025)

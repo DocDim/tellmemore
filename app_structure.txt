@@ -1,0 +1,34 @@
+your_project_root/
+├── app.py                     
+├── backendApp/
+│   ├── __init__.py
+│   ├── api/
+│   │   ├── __init__.py
+│   │   ├── users.py
+│   │   ├── chat_sessions.py
+│   │   ├── prompts.py
+│   │   ├── audit_logs.py
+│   │   └── auth.py
+│   ├── models/
+│   │   ├── __init__.py
+│   │   └── postgres_models.py
+│   ├── schemas/
+│   │   ├── __init__.py
+│   │   ├── user_schemas.py
+│   │   ├── quota_schemas.py
+│   │   ├── chat_session_schemas.py
+│   │   ├── prompt_schemas.py
+│   │   ├── audit_log_schemas.py
+│   │   └── auth_schemas.py
+│   ├── services/
+│   │   ├── __init__.py
+│   │   ├── user_service.py
+│   │   ├── quota_service.py
+│   │   ├── chat_session_service.py
+│   │   ├── prompt_service.py
+│   │   ├── audit_service.py
+│   │   └── auth_service.py
+│   └── dependencies.py
+├── .env
+├── .gitignore
+└── requirements.txt

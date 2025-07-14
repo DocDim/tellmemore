@@ -17,7 +17,7 @@ This repository contains the **frontend application for the _TellMeMore_ project
 
 ---
 
-## 🛠 Prerequisites
+## Prerequisites
 
 Make sure you have the following installed:
 

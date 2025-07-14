@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}FastAPI Frontend{% endblock %}</title>
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" xintegrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
+    <!-- Bootstrap Icons (Optional, but useful) -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            background: linear-gradient(to bottom right, #e0f2fe, #e1bee7); /* Light blue to light purple */
+        }
+        .profile-circle {
+            width: 32px;
+            height: 32px;
+            background-color: #0d6efd; /* Bootstrap primary blue */
+            color: white;
+            border-radius: 50%;
+            text-align: center;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 0.9rem;
+            flex-shrink: 0;
+        }
+        /* Custom scrollbar for chat history */
+        .chat-history-scrollable::-webkit-scrollbar {
+            width: 8px;
+        }
+        .chat-history-scrollable::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 10px;
+        }
+        .chat-history-scrollable::-webkit-scrollbar-thumb {
+            background: #888;
+            border-radius: 10px;
+        }
+        .chat-history-scrollable::-webkit-scrollbar-thumb:hover {
+            background: #555;
+        }
+        /* Styles for the two prompt boxes in chat area */
+        .prompt-box {
+            min-height: 150px; /* Adjust as needed */
+            max-height: 100%;
+            flex-grow: 1;
+        }
+    </style>
+</head>
+<body class="d-flex flex-column min-vh-100">
+    <div id="app-root" class="d-flex flex-column flex-grow-1">
+        {% block content %}{% endblock %}
+    </div>
+
+    <!-- Message Box Placeholder -->
+    <div id="message-box-container"></div>
+
+    <!-- Bootstrap Bundle with Popper -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" xintegrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz" crossorigin="anonymous"></script>
+
+    <script>
+        // DEBUG: Raw Jinja2 value of backend_api_url
+        console.log('DEBUG (Jinja2 Raw): backend_api_url = "{{ backend_api_url }}"');
+
+        // Base URL for your FastAPI backend API
+        const BACKEND_API_URL = "{{ backend_api_url }}".replace(/\/+$/, ''); // Remove trailing slashes
+
+        // DEBUG: JavaScript value of BACKEND_API_URL after processing
+        console.log('DEBUG (JS Processed): BACKEND_API_URL =', BACKEND_API_URL);
+        // Temporarily alert the value to ensure it's seen
+        // alert('BACKEND_API_URL: ' + BACKEND_API_URL);
+
+
+        // Global utility function for Message Box (using Bootstrap alert classes)
+        function showMessageBox(message, type) {
+            const container = document.getElementById('message-box-container');
+            // Clear existing messages
+            container.innerHTML = ''; 
+
+            const alertDiv = document.createElement('div');
+            alertDiv.className = `alert alert-${type} alert-dismissible fade show fixed-top mx-auto mt-3 shadow-lg text-center` + 
+                                 ` d-flex justify-content-between align-items-center`; // Added d-flex for alignment
+            alertDiv.style.maxWidth = '400px';
+            alertDiv.style.zIndex = '1050'; // Ensure it's on top
+
+            alertDiv.innerHTML = `
+                <div>${message}</div>
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            `;
+            container.appendChild(alertDiv);
+
+            // Automatically hide after 5 seconds
+            setTimeout(() => {
+                const bsAlert = new bootstrap.Alert(alertDiv);
+                bsAlert.close();
+            }, 5000);
+        }
+
+        // Function to store/retrieve/clear token
+        function setToken(token) {
+            localStorage.setItem('jwt_token', token); // Using jwt_token as per your auth.html
+        }
+
+        function getToken() {
+            return localStorage.getItem('jwt_token');
+        }
+
+        function clearToken() {
+            localStorage.removeItem('jwt_token');
+            // Redirect to login page instead of /logout
+            window.location.href = '/login'; 
+        }
+
+        // Global Utility for API fetch with JWT
+        async function fetchAPI(endpoint, options = {}) {
+            const token = getToken(); // Get token from local storage
+            const headers = {
+                'Content-Type': 'application/json',
+                ...options.headers
+            };
+            if (token) {
+                headers['Authorization'] = `Bearer ${token}`;
+            }
+
+            // Ensure endpoint always starts with a single slash
+            const fullUrl = `${BACKEND_API_URL}${endpoint.startsWith('/') ? endpoint : '/' + endpoint}`;
+
+            try {
+                const response = await fetch(fullUrl, {
+                    ...options,
+                    headers: headers
+                });
+
+                if (response.status === 401 || response.status === 403) {
+                    showMessageBox('Your session has expired or is invalid. Please log in again.', 'danger');
+                    clearToken(); // Clear token and redirect to login
+                    return null; // Indicate failure
+                }
+
+                // If response is a redirect (3xx), it might be a problem with the API route definition itself.
+                // fetch() generally follows redirects, but a 308 for OPTIONS preflight can be problematic for CORS.
+                // Log it to help diagnose.
+                if (response.status >= 300 && response.status < 400) {
+                    console.warn(`API Redirect detected for ${fullUrl}. Status: ${response.status}. Location: ${response.headers.get('Location')}`);
+                    // Depending on the redirect, you might need to handle it or re-route.
+                    // For 308 on OPTIONS, it usually implies a trailing slash mismatch on the backend route.
+                    // The .replace(/\/+$/, '') on BACKEND_API_URL should help.
+                }
+
+                return response;
+            } catch (error) {
+                showMessageBox('Network error. Please check your connection and try again.', 'danger');
+                console.error('Network fetch error for URL:', fullUrl, error);
+                return null;
+            }
+        }
+    </script>
+    {% block scripts %}{% endblock %}
+</body>
+</html>

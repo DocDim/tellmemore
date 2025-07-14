@@ -1,0 +1,1 @@
+# This file makes 'frontend_app' a Python package.

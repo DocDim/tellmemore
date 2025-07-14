@@ -1,0 +1,185 @@
+{% extends "base.html" %}
+
+{% block title %}Login / Register{% endblock %}
+
+{% block content %}
+<div class="container d-flex flex-grow-1 align-items-center justify-content-center py-4">
+    <div class="card shadow-lg p-4 p-md-5 w-100" style="max-width: 450px; border-radius: 1rem;">
+        <div class="text-center mb-4">
+            <img src="/static/logo.jpg" alt="TellMeMore Logo" style="height: 115px; margin-bottom: 5px;">
+        </div>
+        
+        <form id="auth-form" class="needs-validation" novalidate>
+            <div id="name-field" class="mb-3" style="display: none;">
+                <label for="name" class="form-label fw-bold">Name</label>
+                <input type="text" class="form-control" id="name" placeholder="Your Name">
+                <div class="invalid-feedback">
+                    {# Removed "Please provide a name." #}
+                </div>
+            </div>
+            <div class="mb-3">
+                <label for="email" class="form-label fw-bold">Email</label>
+                <input type="email" class="form-control" id="email" placeholder="your@example.com" required>
+                <div class="invalid-feedback">
+                    {# Removed "Please enter a valid email." #}
+                </div>
+            </div>
+            <div class="mb-4">
+                <label for="password" class="form-label fw-bold">Password</label>
+                <input type="password" class="form-control" id="password" placeholder="********" required>
+                <div class="invalid-feedback">
+                    {# Removed "Please enter your password." #}
+                </div>
+            </div>
+            <button id="submit-button" type="submit" class="btn btn-primary w-100 py-2 fw-semibold" style="border-radius: 0.5rem;">
+                Login
+            </button>
+        </form>
+        <div class="text-center mt-4">
+            <p class="text-muted">
+                Don't have an account?
+                <button id="toggle-auth-mode" class="btn btn-link p-0 border-0 align-baseline text-decoration-none fw-semibold" type="button">
+                    Register here
+                </button>
+            </p>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    console.log('Frontend using BACKEND_API_URL:', BACKEND_API_URL);
+
+    let isRegisterMode = false; // Changed to false to default to Login mode
+
+    const authTitle = document.getElementById('auth-title');
+    const nameField = document.getElementById('name-field');
+    const nameInput = document.getElementById('name');
+    const emailInput = document.getElementById('email');
+    const passwordInput = document.getElementById('password');
+    const submitButton = document.getElementById('submit-button');
+    let toggleAuthModeButton = document.getElementById('toggle-auth-mode'); // Use 'let' as it will be reassigned
+    const authForm = document.getElementById('auth-form');
+
+    function updateUI() {
+        if (isRegisterMode) {
+            authTitle.textContent = 'Register for TellMeMore';
+            nameField.style.display = 'block';
+            nameInput.removeAttribute('required'); // Name is optional for registration
+            submitButton.textContent = 'Register';
+            toggleAuthModeButton.textContent = 'Login here';
+        } else {
+            authTitle.textContent = 'Login to TellMeMore';
+            nameField.style.display = 'none';
+            nameInput.removeAttribute('required'); // Ensure it's not required if switching from register
+            submitButton.textContent = 'Login';
+            toggleAuthModeButton.textContent = 'Register here';
+        }
+    }
+
+    // Event listener for the toggle button
+    toggleAuthModeButton.addEventListener('click', () => {
+        isRegisterMode = !isRegisterMode;
+        // Reset form validation state when switching modes
+        authForm.classList.remove('was-validated');
+        emailInput.classList.remove('is-invalid', 'is-valid');
+        passwordInput.classList.remove('is-invalid', 'is-valid');
+        nameInput.classList.remove('is-invalid', 'is-valid');
+        updateUI();
+    });
+
+    authForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        console.log('Form submission initiated.');
+
+        authForm.classList.add('was-validated'); // Trigger Bootstrap's validation styles
+
+        if (!authForm.checkValidity()) {
+            e.stopPropagation(); // Stop the event if form is invalid
+            showMessageBox('Please fill in all required fields correctly.', 'danger');
+            return;
+        }
+
+        submitButton.disabled = true;
+        submitButton.textContent = 'Processing...';
+
+        const email = emailInput.value;
+        const password = passwordInput.value;
+        const name = isRegisterMode ? nameInput.value : '';
+
+        const authUrl = isRegisterMode ? '/auth/register' : '/auth/login';
+        const authBody = isRegisterMode ? { name, email, password } : { username: email, password: password };
+
+        try {
+            console.log('Sending auth request to backend:', `${BACKEND_API_URL}${authUrl}`);
+            console.log('Auth request body:', authBody);
+
+            const response = await fetch(`${BACKEND_API_URL}${authUrl}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': isRegisterMode ? 'application/json' : 'application/x-www-form-urlencoded'
+                },
+                body: isRegisterMode ? JSON.stringify(authBody) : new URLSearchParams(authBody).toString()
+            });
+
+            const data = await response.json();
+            console.log('Backend Auth API Response:', data);
+
+            if (response.ok) {
+                showMessageBox(data.message || 'Operation successful!', 'success');
+                if (!isRegisterMode && data.access_token) {
+                    localStorage.setItem('jwt_token', data.access_token);
+                    console.log('JWT stored in localStorage:', localStorage.getItem('jwt_token'));
+                    // Redirect to dashboard after successful login
+                    window.location.href = '/dashboard';
+                } else if (isRegisterMode) {
+                    console.log('Registration successful, switching to login mode.');
+                    isRegisterMode = false;
+                    emailInput.value = '';
+                    passwordInput.value = '';
+                    nameInput.value = '';
+                    authForm.classList.remove('was-validated'); // Reset validation for next mode
+                    updateUI();
+                }
+            } else {
+                console.error('Backend Auth API responded with non-2xx status:', response.status, data);
+                showMessageBox(data.detail || 'Authentication failed. Please check your credentials.', 'danger');
+            }
+        } catch (error) {
+            console.error('Caught an unexpected error during auth process:', error);
+            showMessageBox('An unexpected error occurred. Please try again.', 'danger');
+        } finally {
+            submitButton.disabled = false;
+            submitButton.textContent = isRegisterMode ? 'Register' : 'Login';
+        }
+    });
+
+    updateUI(); // Initial UI setup
+
+    // Handle form validation feedback on input for better UX
+    authForm.querySelectorAll('input').forEach(input => {
+        input.addEventListener('input', () => {
+            if (input.checkValidity()) {
+                input.classList.remove('is-invalid');
+                input.classList.add('is-valid');
+            } else {
+                input.classList.remove('is-valid');
+                input.classList.add('is-invalid');
+            }
+        });
+        // Clear validation state on focus
+        input.addEventListener('focus', () => {
+            input.classList.remove('is-invalid', 'is-valid');
+            authForm.classList.remove('was-validated'); // Remove global validation state
+        });
+    });
+
+    // Redirect to dashboard if already logged in (on page load)
+    window.addEventListener('load', () => {
+        if (getToken()) {
+            window.location.href = '/dashboard';
+        }
+    });
+</script>
+{% endblock %}

@@ -1,0 +1,729 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard & Chat{% endblock %}
+
+{% block content %}
+    <!-- Header -->
+    <nav class="navbar navbar-light bg-white border-bottom px-3 py-3"> {# Adjusted padding #}
+        <span class="navbar-brand mb-0 h1 fw-bold">
+            <img src="/static/logo.jpg" alt="TellMeMore Logo" style="height: 30px; margin-right: 10px; vertical-align: middle;">
+            TellMeMore
+        </span> {# Added fw-bold for stronger text #}
+        <div class="d-flex align-items-center">
+            <i class="bi bi-three-dots-vertical me-3 text-secondary"></i>
+            <div class="profile-circle me-2" id="header-profile-circle">U</div>
+            <a href="#" id="header-logout-link" class="text-danger fw-semibold text-decoration-none">Logout</a> {# Changed href to # #}
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <div class="container-fluid flex-grow-1 d-flex flex-column flex-md-row">
+        <!-- Sidebar -->
+        <div class="col-md-3 col-lg-2 bg-white p-3 border-end d-flex flex-column shadow-sm"> {# Added shadow-sm #}
+            <button id="new-session-button" class="btn btn-primary w-100 mb-3 d-flex align-items-center justify-content-center py-2 fw-semibold" style="border-radius: 0.5rem;">
+                <i class="bi bi-chat-left-text me-2"></i> New Session
+            </button>
+
+            <!-- Previous 7 Days Section -->
+            <h6 class="text-secondary mt-3 mb-2 fw-semibold">Previous 7 Days</h6> {# Changed text-muted to text-secondary #}
+            <ul id="sessions-7-days" class="list-unstyled mb-3">
+                <!-- Dynamically populated sessions will go here -->
+            </ul>
+
+            <!-- Previous 30 Days Section -->
+            <h6 class="text-secondary mt-3 mb-2 fw-semibold">Previous 30 Days</h6> {# Changed text-muted to text-secondary #}
+            <ul id="sessions-30-days" class="list-unstyled mb-3">
+                <!-- Dynamically populated sessions will go here -->
+            </ul>
+
+            <!-- April Section -->
+            <h6 class="text-secondary mt-3 mb-2 fw-semibold">April</h6> {# Changed text-muted to text-secondary #}
+            <ul id="sessions-april" class="list-unstyled mb-3">
+                <!-- Dynamically populated sessions will go here -->
+            </ul>
+            <p class="text-center text-muted small mt-3 d-none" id="loading-sessions-sidebar">Loading sessions...</p>
+            <p class="text-center text-muted small mt-3 d-none" id="no-sessions-sidebar">No sessions yet. Create one!</p>
+        </div>
+
+        <!-- Chat Area - Always visible -->
+        <div class="col-md-9 col-lg-7 p-3 d-flex flex-column chat-area flex-grow-1">
+            <div id="chat-area-container" class="card shadow-lg flex-grow-1 d-flex flex-column" style="border-radius: 1rem;">
+                <div class="card-header bg-white border-bottom d-flex align-items-center py-3" style="border-top-left-radius: 1rem; border-top-right-radius: 1rem;">
+                    <!-- Model Selectors from Image -->
+                    <div class="col me-2">
+                        <select class="form-select" id="model-select-chatgpt">
+                            <option value="gpt-4o" selected>GPT-4o</option>
+                            <option value="gpt-4o-mini">GPT-4o Mini</option>
+                            <option value="gpt-3.5-turbo">GPT-3.5 Turbo</option>
+                        </select>
+                    </div>
+                    <div class="col">
+                        <select class="form-select" id="model-select-gemini">
+                            <option value="gemini-1.5-pro-latest" selected>Gemini 1.5 Pro Latest</option>
+                            <option value="gemini-1.5-flash-latest">Gemini 1.5 Flash Latest</option>
+                            <option value="gemini-1.0-pro">Gemini 1.0 Pro</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="card-body p-3 d-flex flex-grow-1 flex-column flex-md-row gap-3 overflow-hidden">
+                    <!-- Left Chat Box (ChatGPT Conversation) -->
+                    <div class="prompt-box border rounded-3 flex-grow-1 d-flex flex-column bg-light">
+                        <h6 class="card-title text-center py-2 border-bottom text-primary fw-bold">ChatGPT Conversation</h6>
+                        <div id="chat-history-chatgpt" class="p-3 overflow-auto flex-grow-1">
+                            <p class="text-center text-muted">Start typing your first message to begin a conversation with ChatGPT.</p>
+                        </div>
+                    </div>
+                    <!-- Right Chat Box (Gemini Conversation) -->
+                    <div class="prompt-box border rounded-3 flex-grow-1 d-flex flex-column bg-light">
+                        <h6 class="card-title text-center py-2 border-bottom text-success fw-bold">Gemini Conversation</h6>
+                        <div id="chat-history-gemini" class="p-3 overflow-auto flex-grow-1">
+                            <p class="text-center text-muted">Start typing your first message to begin a conversation with Gemini.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card-footer bg-white p-3 border-top" style="border-bottom-left-radius: 1rem; border-bottom-right-radius: 1rem;">
+                    <form id="send-prompt-form" class="d-flex gap-3">
+                        <input
+                            id="new-prompt-text"
+                            type="text"
+                            placeholder="Type your message..."
+                            class="form-control form-control-lg flex-grow-1"
+                            required
+                        />
+                        <button
+                            id="send-prompt-button"
+                            type="submit"
+                            class="btn btn-primary btn-lg fw-bold"
+                        >
+                            <i class="bi bi-send-fill"></i>
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- Prompt Controls - Always visible (right sidebar) -->
+        <div class="col-md-12 col-lg-3 p-3 border-start d-none d-lg-block">
+            <div class="card border-0 p-3 mb-4 rounded-3 bg-white shadow-sm"> {# Changed from div.border to card.border-0 #}
+                <h6 class="fw-bold mb-3 text-primary">System Prompts</h6>
+                <div id="system-prompts-list" class="form-check-group">
+                    <div class="form-check mb-2">
+                        <input class="form-check-input" type="checkbox" value="prompt1" id="systemPrompt1">
+                        <label class="form-check-label text-body" for="systemPrompt1">prompt 1</label>
+                    </div>
+                    <div class="form-check mb-2">
+                        <input class="form-check-input" type="checkbox" value="prompt2" id="systemPrompt2">
+                        <label class="form-check-label text-body" for="systemPrompt2">prompt 2</label>
+                    </div>
+                    <div class="form-check mb-2">
+                        <input class="form-check-input" type="checkbox" value="prompt3" id="systemPrompt3">
+                        <label class="form-check-label text-body" for="systemPrompt3">prompt 3</label>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card border-0 p-3 rounded-3 bg-white shadow-sm"> {# Changed from div.border to card.border-0 #}
+                <h6 class="fw-bold mb-3 text-primary">User’s Prompts</h6>
+                <div id="user-prompts-list" class="form-check-group">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <div class="form-check flex-grow-1">
+                            <input class="form-check-input" type="checkbox" value="userPrompt1" id="userPromptUser1">
+                            <label class="form-check-label text-body" for="userPromptUser1">prompt 1</label>
+                        </div>
+                        <a href="#" class="btn btn-sm btn-outline-secondary ms-2" style="border-radius: 0.5rem;">Edit</a>
+                    </div>
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <div class="form-check flex-grow-1">
+                            <input class="form-check-input" type="checkbox" value="userPrompt2" id="userPromptUser2">
+                            <label class="form-check-label text-body" for="userPromptUser2">prompt 2</label>
+                        </div>
+                        <a href="#" class="btn btn-sm btn-outline-secondary ms-2" style="border-radius: 0.5rem;">Edit</a>
+                    </div>
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <div class="form-check flex-grow-1">
+                            <input class="form-check-input" type="checkbox" value="userPrompt3" id="userPromptUser3">
+                            <label class="form-check-label text-body" for="userPrompt3">prompt 3</label>
+                        </div>
+                        <a href="#" class="btn btn-sm btn-outline-secondary ms-2" style="border-radius: 0.5rem;">Edit</a>
+                    </div>
+                </div>
+                <button class="btn btn-primary btn-sm mt-3 fw-semibold" style="border-radius: 0.5rem;">
+                    <i class="bi bi-plus me-1"></i> Add +
+                </button>
+            </div>
+        </div>
+    </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // --- Global State ---
+    let authToken = localStorage.getItem('jwt_token') || null;
+    let currentUser = null; // Stored for display purposes
+    let activeChatSessionId = null; // The ID of the currently selected/active session
+    let activeChatSessionTitle = ''; // The title of the currently selected/active session
+    let isNewSessionActive = false; // Flag to indicate if we're in a new, unsaved session
+
+    // Chat history for each model, to be sent with API calls
+    let chatHistoryOpenAI = []; // Stores messages in { role: "user/assistant", content: "..." } format
+    let chatHistoryGoogle = []; // Stores messages in { role: "user/assistant", content: "..." } format
+
+    // --- DOM Elements ---
+    const headerProfileCircle = document.getElementById('header-profile-circle');
+    const headerLogoutLink = document.getElementById('header-logout-link');
+
+    const newSessionButton = document.getElementById('new-session-button');
+    const sessions7DaysList = document.getElementById('sessions-7-days');
+    const sessions30DaysList = document.getElementById('sessions-30-days');
+    const sessionsAprilList = document.getElementById('sessions-april');
+    const loadingSessionsSidebar = document.getElementById('loading-sessions-sidebar');
+    const noSessionsSidebar = document.getElementById('no-sessions-sidebar');
+    
+    const chatHistoryChatGPT = document.getElementById('chat-history-chatgpt');
+    const chatHistoryGemini = document.getElementById('chat-history-gemini');
+    const newPromptTextInput = document.getElementById('new-prompt-text');
+    const sendPromptButton = document.getElementById('send-prompt-button');
+    const sendPromptForm = document.getElementById('send-prompt-form');
+
+    const modelSelectChatGPT = document.getElementById('model-select-chatgpt');
+    const modelSelectGemini = document.getElementById('model-select-gemini');
+
+
+    // --- Helper Functions ---
+
+    function escapeHTML(str) {
+        const div = document.createElement('div');
+        div.appendChild(document.createTextNode(str));
+        return div.innerHTML;
+    }
+
+    // Generic fetch wrapper for API calls (already defined in base.html)
+    // IMPORTANT: This fetchAPI is for your *backend* API (users, sessions, prompts).
+    // For LLM API calls, we'll create a separate function or modify this one slightly.
+    // async function fetchAPI(endpoint, options = {}) { ... }
+    // function showMessageBox(message, type) { ... }
+
+    // NEW: LLM API fetch wrapper
+    async function fetchLLMAPI(endpoint, options = {}) {
+        const token = getToken(); // Use the same JWT token for LLM API if it's secured
+        const headers = {
+            'Content-Type': 'application/json',
+            ...options.headers
+        };
+        if (token) {
+            headers['Authorization'] = `Bearer ${token}`;
+        }
+
+        // Use the new LLM_API_BASE_URL
+        const fullUrl = `${LLM_API_BASE_URL}${endpoint.startsWith('/') ? endpoint : '/' + endpoint}`;
+
+        try {
+            const response = await fetch(fullUrl, {
+                ...options,
+                headers: headers
+            });
+
+            if (response.status === 401 || response.status === 403) {
+                showMessageBox('Your session has expired or is invalid with the LLM API. Please log in again.', 'danger');
+                clearToken(); // Clear token and redirect to login
+                return null; // Indicate failure
+            }
+            return response;
+        } catch (error) {
+            showMessageBox('Network error connecting to LLM API. Please check your connection and try again.', 'danger');
+            console.error('Network fetch error for LLM URL:', fullUrl, error);
+            return null;
+        }
+    }
+
+
+    // Helper to append messages to a specific chat history box (DOM)
+    function appendMessageToChatBox(chatBoxElement, sender, message, type) {
+        const messageDiv = document.createElement('div');
+        messageDiv.className = `mb-2 p-2 rounded-3 ${sender === 'You' ? 'bg-primary text-white ms-auto' : (type === 'chatgpt' ? 'bg-info text-dark me-auto' : 'bg-success text-white me-auto')}`;
+        messageDiv.style.maxWidth = '85%';
+        messageDiv.innerHTML = `<small class="fw-semibold">${sender}:</small><p class="mb-0">${escapeHTML(message)}</p>`;
+        chatBoxElement.appendChild(messageDiv);
+        chatBoxElement.scrollTop = chatBoxElement.scrollHeight; // Scroll to bottom
+    }
+
+
+    // --- Core Frontend Logic ---
+
+    async function fetchCurrentUserProfile() {
+        console.log("DEBUG: fetchCurrentUserProfile: Attempting to fetch user profile...");
+        try {
+            const response = await fetchAPI('/auth/protected'); // Use backend API for user profile
+            if (response && response.ok) {
+                currentUser = await response.json();
+                headerProfileCircle.textContent = (currentUser.name || 'U').charAt(0).toUpperCase();
+                console.log("DEBUG: fetchCurrentUserProfile: User profile fetched successfully:", currentUser);
+            } else if (response) {
+                console.error("DEBUG: fetchCurrentUserProfile: API responded with non-OK status:", response.status, await response.text());
+                showMessageBox('Failed to load user profile.', 'danger');
+            } else {
+                console.error("DEBUG: fetchCurrentUserProfile: fetchAPI returned null (network error or unhandled redirect).");
+            }
+        } catch (error) {
+            console.error("DEBUG: fetchCurrentUserProfile: Caught network error:", error);
+            showMessageBox('Network error fetching user profile.', 'danger');
+        }
+    }
+
+    async function fetchChatSessionsForSidebar() {
+        console.log("DEBUG: fetchChatSessionsForSidebar: Attempting to fetch chat sessions...");
+        showLoadingSpinner(loadingSessionsSidebar, true);
+        noSessionsSidebar.classList.add('d-none'); // Use d-none for Bootstrap
+        sessions7DaysList.innerHTML = '';
+        sessions30DaysList.innerHTML = '';
+        sessionsAprilList.innerHTML = '';
+        
+        try {
+            const response = await fetchAPI(`/chat_sessions/user/${currentUser.user_id}`); // Use backend API
+            if (response && response.ok) {
+                const sessions = await response.json();
+                console.log("DEBUG: fetchChatSessionsForSidebar: Chat sessions fetched successfully:", sessions);
+
+                const now = new Date();
+                const sevenDaysAgo = new Date(now); sevenDaysAgo.setDate(now.getDate() - 7);
+                const thirtyDaysAgo = new Date(now); thirtyDaysAgo.setDate(now.getDate() - 30);
+                const currentMonth = now.getMonth();
+
+                sessions.sort((a, b) => new Date(b.created_at) - new Date(a.created_at)); // Sort by newest first
+
+                sessions.forEach(session => {
+                    const createdAt = new Date(session.created_at);
+
+                    const sessionItem = document.createElement('li');
+                    const sessionLink = document.createElement('a');
+                    sessionLink.href = "#"; // Prevent full page reload
+                    sessionLink.dataset.chatSessionId = session.session_id;
+                    sessionLink.dataset.chatSessionTitle = session.title;
+                    // Use Bootstrap list-group-item classes for styling
+                    sessionLink.className = "list-group-item list-group-item-action py-2 text-body d-flex justify-content-between align-items-center";
+                    sessionLink.textContent = escapeHTML(session.title);
+
+                    // Add active class if current session
+                    if (session.session_id === activeChatSessionId) {
+                        sessionLink.classList.add('active');
+                        sessionLink.setAttribute('aria-current', 'true');
+                    }
+                    
+                    sessionLink.onclick = (e) => {
+                        e.preventDefault();
+                        navigateToChatSession(session.session_id, session.title);
+                    };
+
+                    sessionItem.appendChild(sessionLink);
+
+                    if (createdAt >= sevenDaysAgo) {
+                        sessions7DaysList.appendChild(sessionItem);
+                    } else if (createdAt >= thirtyDaysAgo) {
+                        sessions30DaysList.appendChild(sessionItem);
+                    } else if (createdAt.getMonth() === currentMonth -1 || createdAt.getMonth() === 3) { // Check for April (month 3) or previous month generally
+                        sessionsAprilList.appendChild(sessionItem); // Assuming "April" is representative of older sessions
+                    }
+                });
+
+                if (sessions7DaysList.children.length === 0 &&
+                    sessions30DaysList.children.length === 0 &&
+                    sessionsAprilList.children.length === 0) {
+                    noSessionsSidebar.classList.remove('d-none');
+                } else {
+                    noSessionsSidebar.classList.add('d-none');
+                }
+
+            } else if (response) {
+                console.error("DEBUG: fetchChatSessionsForSidebar: API responded with non-OK status:", response.status, await response.text());
+                showMessageBox('Failed to fetch chat sessions for sidebar.', 'danger');
+                noSessionsSidebar.classList.remove('d-none');
+                noSessionsSidebar.textContent = 'Could not load sessions.';
+            } else {
+                console.error("DEBUG: fetchChatSessionsForSidebar: fetchAPI returned null (network error or unhandled redirect).");
+                showMessageBox('Network error fetching chat sessions for sidebar.', 'danger');
+                noSessionsSidebar.classList.remove('d-none');
+                noSessionsSidebar.textContent = 'Network error loading sessions.';
+            }
+        } catch (error) {
+            console.error("DEBUG: fetchChatSessionsForSidebar: Caught network error:", error);
+            showMessageBox('Network error fetching chat sessions for sidebar.', 'danger');
+            noSessionsSidebar.classList.remove('d-none');
+            noSessionsSidebar.textContent = 'Network error loading sessions.';
+        } finally {
+            showLoadingSpinner(loadingSessionsSidebar, false);
+        }
+    }
+
+
+    // Sets up the chat area for a new session or an empty state
+    function initializeChatArea(sessionId, sessionTitle) {
+        console.log("DEBUG: initializeChatArea: Initializing chat area. SessionId:", sessionId, "Title:", sessionTitle);
+        activeChatSessionId = sessionId;
+        activeChatSessionTitle = sessionTitle;
+        newPromptTextInput.value = '';
+        
+        // Clear both chat history boxes and reset in-memory history arrays
+        chatHistoryChatGPT.innerHTML = '';
+        chatHistoryGemini.innerHTML = '';
+        chatHistoryOpenAI = [];
+        chatHistoryGoogle = [];
+
+        if (sessionId) { // A session is active, load its full history
+            isNewSessionActive = false; // Not a new session
+            chatHistoryChatGPT.innerHTML = `<p class="text-muted text-center"><span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Loading history...</p>`;
+            chatHistoryGemini.innerHTML = `<p class="text-muted text-center"><span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Loading history...</p>`;
+            enableChatInput(true);
+            newPromptTextInput.focus();
+            fetchAndDisplayChatHistory(sessionId); // Fetch and display full history
+        } else { // No session active (initial state or after "New Session" button click)
+            isNewSessionActive = true; // Mark as new session
+            chatHistoryChatGPT.innerHTML = `<p class="text-center text-muted">Start typing your first message to begin a conversation with ChatGPT.</p>`;
+            chatHistoryGemini.innerHTML = `<p class="text-center text-muted">Start typing your first message to begin a conversation with Gemini.</p>`;
+            enableChatInput(true); // Enable input for new session
+            newPromptTextInput.focus();
+            // Clear URL param for new session state
+            history.pushState(null, '', '/dashboard');
+        }
+        updateSidebarActiveSession(); // Re-highlight sidebar correctly
+    }
+
+    // Fetches and displays the full chat history for a given session
+    async function fetchAndDisplayChatHistory(sessionId) {
+        console.log("DEBUG: fetchAndDisplayChatHistory: Attempting to fetch full history for session:", sessionId);
+        if (!sessionId) return;
+        chatHistoryChatGPT.innerHTML = `<p class="text-center text-muted"><span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Loading history...</p>`;
+        chatHistoryGemini.innerHTML = `<p class="text-center text-muted"><span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Loading history...</p>`;
+
+        try {
+            const response = await fetchAPI(`/prompts/session/${sessionId}`); // Use backend API for prompts
+            if (response && response.ok) {
+                const prompts = await response.json();
+                console.log("DEBUG: fetchAndDisplayChatHistory: Prompts fetched successfully:", prompts);
+                
+                chatHistoryChatGPT.innerHTML = ''; // Clear loading message
+                chatHistoryGemini.innerHTML = ''; // Clear loading message
+                chatHistoryOpenAI = []; // Reset history for new session load
+                chatHistoryGoogle = []; // Reset history for new session load
+
+
+                if (prompts.length > 0) {
+                    prompts.forEach(prompt => {
+                        // Display user's prompt in both boxes
+                        appendMessageToChatBox(chatHistoryChatGPT, 'You', prompt.prompt_text, 'user');
+                        appendMessageToChatBox(chatHistoryGemini, 'You', prompt.prompt_text, 'user');
+
+                        // Add user's prompt to both history arrays
+                        const userMessage = { role: "user", content: prompt.prompt_text };
+                        chatHistoryOpenAI.push(userMessage);
+                        chatHistoryGoogle.push(userMessage);
+
+                        const chatGPTResponse = prompt.llm_responses[0] || "No ChatGPT response.";
+                        const geminiResponse = prompt.llm_responses[1] || "No Gemini response."; 
+
+                        // Add AI responses to their respective history arrays
+                        chatHistoryOpenAI.push({ role: "assistant", content: chatGPTResponse });
+                        chatHistoryGoogle.push({ role: "assistant", content: geminiResponse });
+
+                        appendMessageToChatBox(chatHistoryChatGPT, 'ChatGPT', chatGPTResponse, 'chatgpt');
+                        appendMessageToChatBox(chatHistoryGemini, 'Gemini', geminiResponse, 'gemini');
+                    });
+                } else {
+                    chatHistoryChatGPT.innerHTML = `<p class="text-center text-muted">No conversation history for this session. Start typing!</p>`;
+                    chatHistoryGemini.innerHTML = `<p class="text-center text-muted">No conversation history for this session. Start typing!</p>`;
+                }
+            } else if (response) {
+                console.error("DEBUG: fetchAndDisplayChatHistory: API responded with non-OK status:", response.status, await response.text());
+                chatHistoryChatGPT.innerHTML = `<p class="text-center text-danger">Failed to load chat history.</p>`;
+                chatHistoryGemini.innerHTML = `<p class="text-center text-danger">Failed to load chat history.</p>`;
+                showMessageBox('Failed to load chat history for session.', 'danger');
+            } else {
+                console.error("DEBUG: fetchAndDisplayChatHistory: fetchAPI returned null (network error or unhandled redirect).");
+                chatHistoryChatGPT.innerHTML = `<p class="text-center text-danger">Network error loading chat history.</p>`;
+                chatHistoryGemini.innerHTML = `<p class="text-center text-danger">Network error loading chat history.</p>`;
+                showMessageBox('Network error loading chat history.', 'danger');
+            }
+        } catch (error) {
+            console.error("DEBUG: fetchAndDisplayChatHistory: Caught network error:", error);
+            chatHistoryChatGPT.innerHTML = `<p class="text-center text-danger">Network error loading chat history.</p>`;
+            chatHistoryGemini.innerHTML = `<p class="text-center text-danger">Network error loading chat history.</p>`;
+            showMessageBox('Network error loading chat history.', 'danger');
+        } finally {
+            setLoadingChat(false); 
+        }
+    }
+
+    // Function to enable/disable the chat input and send button
+    function enableChatInput(enable) {
+        newPromptTextInput.disabled = !enable;
+        sendPromptButton.disabled = !enable;
+        if (enable) {
+            newPromptTextInput.focus();
+        }
+    }
+
+    sendPromptForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        sendPromptForm.classList.add('was-validated');
+        const promptText = newPromptTextInput.value.trim();
+        
+        if (!promptText) {
+            showMessageBox('Please type a message.', 'danger');
+            return;
+        }
+
+        setLoadingChat(true); 
+
+        try {
+            let sessionToUseId = activeChatSessionId;
+            let sessionToUseTitle = promptText.substring(0, 100); // Use prompt for new session title
+
+            if (isNewSessionActive) {
+                console.log('DEBUG: sendPromptForm submit: New session active. Attempting to create session with title:', sessionToUseTitle);
+                const createSessionResponse = await fetchAPI('/chat_sessions', { // Use backend API
+                    method: 'POST',
+                    body: JSON.stringify({ title: sessionToUseTitle, user_id: currentUser.user_id })
+                });
+
+                if (!createSessionResponse || !createSessionResponse.ok) {
+                    const errorData = createSessionResponse ? await createSessionResponse.json() : {};
+                    console.error('DEBUG: sendPromptForm submit: Failed to create new chat session. Status:', createSessionResponse.status, 'Error Data:', errorData);
+                    showMessageBox(errorData.detail || 'Failed to create new chat session.', 'danger');
+                    return;
+                }
+                const newSessionData = await createSessionResponse.json();
+                sessionToUseId = newSessionData.session_id;
+                sessionToUseTitle = newSessionData.title;
+
+                activeChatSessionId = sessionToUseId;
+                activeChatSessionTitle = sessionToUseTitle;
+                isNewSessionActive = false;
+                
+                history.pushState({ id: sessionToUseId, title: sessionToUseTitle }, '', `/dashboard?session=${sessionToUseId}&title=${encodeURIComponent(sessionToUseTitle)}`);
+                await fetchChatSessionsForSidebar(); // Refresh sidebar to show new session
+                console.log('DEBUG: sendPromptForm submit: New chat session created:', newSessionData);
+            }
+
+            // Get selected models
+            const selectedChatGPTModel = modelSelectChatGPT.value;
+            const selectedGeminiModel = modelSelectGemini.value;
+
+            // Append user prompt to both chat history arrays for the next API call
+            const userMessage = { role: "user", content: promptText };
+            chatHistoryOpenAI.push(userMessage);
+            chatHistoryGoogle.push(userMessage);
+
+            // Display user prompt in both chat boxes immediately
+            appendMessageToChatBox(chatHistoryChatGPT, 'You', promptText, 'user');
+            appendMessageToChatBox(chatHistoryGemini, 'You', promptText, 'user');
+
+            // Prepare API calls for both models using the new fetchLLMAPI function
+            const openaiApiCall = fetchLLMAPI(`/chat/openai/${selectedChatGPTModel}`, {
+                method: 'POST',
+                body: JSON.stringify({
+                    question: promptText,
+                    session_id: sessionToUseId, // Pass session_id to LLM API
+                    chat_history: chatHistoryOpenAI // Send OpenAI specific history
+                })
+            });
+
+            const googleApiCall = fetchLLMAPI(`/chat/google/${selectedGeminiModel}`, {
+                method: 'POST',
+                body: JSON.stringify({
+                    question: promptText,
+                    session_id: sessionToUseId, // Pass session_id to LLM API
+                    chat_history: chatHistoryGoogle // Send Google specific history
+                })
+            });
+
+            // Execute both API calls simultaneously
+            const [openaiResponsePromise, googleResponsePromise] = await Promise.allSettled([openaiApiCall, googleApiCall]);
+
+            let chatGPTAnswer = "Error: No response from ChatGPT.";
+            let geminiAnswer = "Error: No response from Gemini.";
+
+            // Process OpenAI response
+            if (openaiResponsePromise.status === 'fulfilled' && openaiResponsePromise.value && openaiResponsePromise.value.ok) {
+                const openaiData = await openaiResponsePromise.value.json();
+                chatGPTAnswer = openaiData.answer || "No answer provided.";
+                chatHistoryOpenAI.push({ role: "assistant", content: chatGPTAnswer }); // Add AI response to history
+                appendMessageToChatBox(chatHistoryChatGPT, 'ChatGPT', chatGPTAnswer, 'chatgpt');
+            } else {
+                const errorReason = openaiResponsePromise.reason ? openaiResponsePromise.reason.message : 'Unknown error';
+                console.error('Failed to get response from OpenAI:', errorReason);
+                showMessageBox('Failed to get response from ChatGPT.', 'danger');
+                // If there was an error, consider adding an error message to history as well
+                chatHistoryOpenAI.push({ role: "assistant", content: chatGPTAnswer }); // Add error message to history
+                appendMessageToChatBox(chatHistoryChatGPT, 'ChatGPT', chatGPTAnswer, 'chatgpt'); // Display error message in chat
+            }
+
+            // Process Google Gemini response
+            if (googleResponsePromise.status === 'fulfilled' && googleResponsePromise.value && googleResponsePromise.value.ok) {
+                const googleData = await googleResponsePromise.value.json();
+                geminiAnswer = googleData.answer || "No answer provided.";
+                chatHistoryGoogle.push({ role: "assistant", content: geminiAnswer }); // Add AI response to history
+                appendMessageToChatBox(chatHistoryGemini, 'Gemini', geminiAnswer, 'gemini');
+            } else {
+                const errorReason = googleResponsePromise.reason ? googleResponsePromise.reason.message : 'Unknown error';
+                console.error('Failed to get response from Google Gemini:', errorReason);
+                showMessageBox('Failed to get response from Gemini.', 'danger');
+                // If there was an error, consider adding an error message to history as well
+                chatHistoryGoogle.push({ role: "assistant", content: geminiAnswer }); // Add error message to history
+                appendMessageToChatBox(chatHistoryGemini, 'Gemini', geminiAnswer, 'gemini'); // Display error message in chat
+            }
+
+            // Now, save the prompt and both LLM responses to the backend
+            // The backend `llm_responses` is `TEXT[]`, so we'll store both answers in it.
+            const savePromptResponse = await fetchAPI('/prompts', { // Use backend API
+                method: 'POST',
+                body: JSON.stringify({
+                    session_id: sessionToUseId,
+                    user_id: currentUser.user_id,
+                    prompt_text: promptText,
+                    llm_responses: [chatGPTAnswer, geminiAnswer] // Store both actual answers
+                })
+            });
+
+            if (savePromptResponse && savePromptResponse.ok) {
+                newPromptTextInput.value = '';
+                sendPromptForm.classList.remove('was-validated');
+                await fetchCurrentUserProfile(); // Refresh user profile (e.g., for quota updates)
+                console.log('DEBUG: sendPromptForm submit: Prompt and LLM responses saved successfully.');
+            } else {
+                const errorData = savePromptResponse ? await savePromptResponse.json() : {};
+                console.error('DEBUG: sendPromptForm submit: Failed to save prompt/responses. Status:', savePromptResponse.status, 'Error Data:', errorData);
+                showMessageBox(errorData.detail || 'Failed to save prompt and LLM responses.', 'danger');
+            }
+
+        } catch (error) {
+            console.error('DEBUG: sendPromptForm submit: Caught unexpected error:', error);
+            showMessageBox('An unexpected error occurred.', 'danger');
+        } finally {
+            setLoadingChat(false);
+        }
+    });
+
+    function setLoadingChat(isLoading) {
+        newPromptTextInput.disabled = isLoading;
+        sendPromptButton.disabled = isLoading;
+        if (isLoading) {
+            sendPromptButton.innerHTML = `<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>`;
+        } else {
+            sendPromptButton.innerHTML = `<i class="bi bi-send-fill"></i>`;
+        }
+    }
+
+    // --- Event Listeners for Global/Sidebar Actions ---
+
+    newSessionButton.addEventListener('click', async () => {
+        console.log("DEBUG: New Session Button Clicked.");
+        initializeChatArea(null, null); 
+    });
+
+    // Modified logout link handler to call clearToken()
+    headerLogoutLink.addEventListener('click', (e) => {
+        e.preventDefault(); // Prevent default link behavior
+        console.log("DEBUG: Header Logout clicked. Calling clearToken().");
+        clearToken(); // Call the global clearToken function from base.html
+    });
+
+    function showLoadingSpinner(element, show) {
+        if (show) {
+            element.classList.remove('d-none');
+        } else {
+            element.classList.add('d-none');
+        }
+    }
+    
+    // Function to update the active session highlight in the sidebar
+    function updateSidebarActiveSession() {
+        // Remove active class from all session links
+        document.querySelectorAll('#sessions-7-days a, #sessions-30-days a, #sessions-april a').forEach(link => {
+            link.classList.remove('active');
+            link.removeAttribute('aria-current');
+        });
+
+        // Add active class to the currently active session
+        if (activeChatSessionId) {
+            const activeLink = document.querySelector(`[data-chat-session-id="${activeChatSessionId}"]`);
+            if (activeLink) {
+                activeLink.classList.add('active');
+                activeLink.setAttribute('aria-current', 'true');
+            }
+        }
+    }
+
+    function navigateToChatSession(sessionId, sessionTitle) {
+        history.pushState({ id: sessionId, title: sessionTitle }, '', `/dashboard?session=${sessionId}&title=${encodeURIComponent(sessionTitle)}`);
+        initializeChatArea(sessionId, sessionTitle);
+    }
+
+
+    // --- Initial Load Logic ---
+    // NEW: Variable to hold the LLM API Base URL
+    const LLM_API_BASE_URL = "{{ llm_api_base_url }}".replace(/\/+$/, ''); // Remove trailing slashes
+
+    document.addEventListener('DOMContentLoaded', async () => {
+        console.log('Dashboard using BACKEND_API_URL:', BACKEND_API_URL);
+        console.log('Dashboard using LLM_API_BASE_URL:', LLM_API_BASE_URL); // Log the new LLM URL
+        console.log("DEBUG: DOMContentLoaded: Page loaded.");
+        authToken = localStorage.getItem('jwt_token');
+        if (!authToken) {
+            console.log("DEBUG: DOMContentLoaded: No auth token found. Redirecting to /login.");
+            window.location.href = '/login';
+            return;
+        } else {
+            console.log("DEBUG: DOMContentLoaded: Auth token found. Proceeding with dashboard initialization.");
+        }
+
+        await fetchCurrentUserProfile();
+        
+        if (currentUser && currentUser.user_id) {
+            await fetchChatSessionsForSidebar();
+        } else {
+            console.error("DEBUG: DOMContentLoaded: currentUser or user_id not available. Cannot fetch chat sessions.");
+            noSessionsSidebar.classList.remove('d-none');
+            noSessionsSidebar.textContent = 'User profile not loaded. Cannot load sessions.';
+        }
+
+        const urlParams = new URLSearchParams(window.location.search);
+        const initialChatSessionId = urlParams.get('session');
+        const initialChatSessionTitle = urlParams.get('title');
+
+        if (initialChatSessionId && initialChatSessionTitle) {
+            console.log("DEBUG: DOMContentLoaded: Found initial session in URL. ID:", initialChatSessionId, "Title:", initialChatSessionTitle);
+            initializeChatArea(initialChatSessionId, initialChatSessionTitle);
+        } else {
+            console.log("DEBUG: DOMContentLoaded: No initial session in URL. Initializing empty chat area.");
+            initializeChatArea(null, null);
+        }
+    });
+
+    // Handle browser back/forward history for SPA-like navigation
+    window.addEventListener('popstate', (event) => {
+        console.log("DEBUG: Popstate event triggered.");
+        const urlParams = new URLSearchParams(window.location.search);
+        const popstateChatSessionId = urlParams.get('session');
+        const popstateChatSessionTitle = urlParams.get('title');
+
+        if (popstateChatSessionId && popstateChatSessionTitle) {
+            console.log("DEBUG: Popstate: Found session in URL. ID:", popstateChatSessionId, "Title:", popstateChatSessionTitle);
+            initializeChatArea(popstateChatSessionId, popstateChatSessionTitle);
+        } else {
+            console.log("DEBUG: Popstate: No session in URL. Initializing empty chat area.");
+            initializeChatArea(null, null);
+        }
+    });
+
+    // Helper for showing/hiding loading spinners in general
+    function showLoadingSpinner(element, show) {
+        if (show) {
+            element.classList.remove('d-none');
+        } else {
+            element.classList.add('d-none');
+        }
+    }
+
+</script>
+{% endblock %}

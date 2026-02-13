@@ -7,11 +7,11 @@ import { ChatInput } from "./ChatInput";
 import { useChatStore } from "@/lib/stores/chatStore";
 import { usePromptsStore } from "@/lib/stores/promptsStore";
 import { useChatHistory, useSavePrompt, promptKeys } from "@/lib/hooks/usePrompts";
-import { useSendChat } from "@/lib/hooks/useChat";
 import { useUpdateSession, useSession } from "@/lib/hooks/useSessions";
-import { useSystemPrompts, useQuota } from "@/lib/hooks";
+import { useSystemPrompts, useQuota, useModels } from "@/lib/hooks";
+import { apiClient } from "@/lib/api/client";
 import { toast } from "sonner";
-import type { Prompt } from "@/lib/api/types";
+import type { Prompt, StreamChunk } from "@/lib/api/types";
 
 interface Message {
   id: string;
@@ -19,6 +19,7 @@ interface Message {
   content: string;
   timestamp: Date;
   model?: string; // For assistant messages, which model generated it
+  isStreaming?: boolean; // True while streaming is in progress
 }
 
 interface DualChatViewProps {
@@ -42,9 +43,12 @@ export function DualChatView({ sessionId }: DualChatViewProps) {
   const [errorRight, setErrorRight] = useState<string | undefined>();
   const [hasShownWarning, setHasShownWarning] = useState(false);
 
+  // Streaming state: temporary messages being streamed (not in cache yet)
+  const [streamingLeft, setStreamingLeft] = useState<string>("");
+  const [streamingRight, setStreamingRight] = useState<string>("");
+
   // React Query hooks
   const queryClient = useQueryClient();
-  const sendChat = useSendChat();
   const savePrompt = useSavePrompt();
   const updateSession = useUpdateSession();
 
@@ -56,6 +60,9 @@ export function DualChatView({ sessionId }: DualChatViewProps) {
 
   // Fetch user quota for enforcement
   const { data: quota } = useQuota();
+
+  // Fetch available models for provider lookup
+  const { data: models } = useModels();
 
   // Calculate quota percentage
   const quotaPercentage = quota
@@ -145,8 +152,31 @@ export function DualChatView({ sessionId }: DualChatViewProps) {
       }
     });
 
+    // Add streaming messages if currently streaming
+    if (isLoadingLeft && streamingLeft) {
+      leftMsgs.push({
+        id: "streaming-left",
+        role: "assistant",
+        content: streamingLeft,
+        timestamp: new Date(),
+        model: leftModel,
+        isStreaming: true,
+      });
+    }
+
+    if (isLoadingRight && streamingRight) {
+      rightMsgs.push({
+        id: "streaming-right",
+        role: "assistant",
+        content: streamingRight,
+        timestamp: new Date(),
+        model: rightModel,
+        isStreaming: true,
+      });
+    }
+
     return { leftMessages: leftMsgs, rightMessages: rightMsgs };
-  }, [prompts, leftModel, rightModel]);
+  }, [prompts, leftModel, rightModel, isLoadingLeft, isLoadingRight, streamingLeft, streamingRight]);
 
   // Debug: Log converted messages
   // console.log('💬 Converted messages:', {
@@ -156,7 +186,7 @@ export function DualChatView({ sessionId }: DualChatViewProps) {
   //   rightMessages,
   // });
 
-  // Single handler that sends to BOTH models simultaneously
+  // Single handler that streams from BOTH models simultaneously
   const handleSend = async (message: string) => {
     if (!sessionId) {
       console.error("Cannot send message without session ID");
@@ -173,22 +203,23 @@ export function DualChatView({ sessionId }: DualChatViewProps) {
     }
 
     // STEP 1: IMMEDIATELY add user message to cache (optimistic update)
-    // This makes the message appear instantly before LLM responses arrive
     const queryKey = promptKeys.list(sessionId);
     const optimisticMessage: Prompt = {
       prompt_id: 'temp-' + Date.now(),
       user_id: 'temp',
       session_id: sessionId,
       prompt_text: message,
-      llm_responses: [], // Empty initially - will be filled when responses arrive
+      llm_responses: [], // Will be filled when streams complete
       timestamp: new Date().toISOString(),
     };
 
-    // console.log('💬 Adding optimistic user message to cache');
     queryClient.setQueryData<Prompt[]>(queryKey, (old: Prompt[] | undefined) => {
       return [...(old || []), optimisticMessage];
     });
 
+    // Reset streaming state
+    setStreamingLeft("");
+    setStreamingRight("");
     setIsLoadingLeft(true);
     setIsLoadingRight(true);
     setErrorLeft(undefined);
@@ -198,7 +229,7 @@ export function DualChatView({ sessionId }: DualChatViewProps) {
       // Auto-update session title if this is the first message
       const isFirstMessage = !prompts || prompts.length === 0;
       if (isFirstMessage && currentSession) {
-        const title = truncate(message, 50); // First 50 chars
+        const title = truncate(message, 50);
         updateSession.mutate({
           sessionId,
           data: { title },
@@ -207,143 +238,139 @@ export function DualChatView({ sessionId }: DualChatViewProps) {
 
       // Get selected system prompts
       const selectedSystemPrompts = getSelectedSystemPromptTexts(systemPrompts || []);
-      // console.log('📝 Selected system prompts:', selectedSystemPrompts);
 
-      // STEP 2: Send to both models in parallel (background)
-      const [leftResponse, rightResponse] = await Promise.allSettled([
-        sendChat.mutateAsync({
-          question: message,
-          model: leftModel as import("@/lib/api/types").ModelName,
-          session_id: sessionId,
-          chat_history: [], // TODO: Build chat history from messages if needed
-          system_prompts: selectedSystemPrompts,
-        }),
-        sendChat.mutateAsync({
-          question: message,
-          model: rightModel as import("@/lib/api/types").ModelName,
-          session_id: sessionId,
-          chat_history: [], // TODO: Build chat history from messages if needed
-          system_prompts: selectedSystemPrompts,
-        }),
+      // STEP 2: Stream from both models in parallel
+      const [leftResult, rightResult] = await Promise.allSettled([
+        // Left model stream
+        (async () => {
+          let fullContent = "";
+          let usage: StreamChunk['usage'] | undefined;
+
+          try {
+            // Lookup provider from models list
+            const leftProvider = models?.find(m => m.id === leftModel)?.provider || 'openai';
+            
+            const stream = apiClient.chat.sendStream({
+              question: message,
+              model: leftModel as import("@/lib/api/types").ModelName,
+              provider: leftProvider,
+              session_id: sessionId,
+              system_prompts: selectedSystemPrompts,
+            });
+
+            for await (const chunk of stream) {
+              if (chunk.chunk_type === 'content') {
+                fullContent += chunk.token;
+                setStreamingLeft(fullContent); // Update UI incrementally
+              } else if (chunk.chunk_type === 'final' && chunk.done) {
+                fullContent = chunk.full_content || fullContent;
+                usage = chunk.usage;
+                setStreamingLeft(fullContent); // Final update
+              }
+            }
+
+            return { content: fullContent, usage };
+          } catch (error) {
+            console.error('Left model streaming error:', error);
+            throw error;
+          }
+        })(),
+        // Right model stream
+        (async () => {
+          let fullContent = "";
+          let usage: StreamChunk['usage'] | undefined;
+
+          try {
+            // Lookup provider from models list
+            const rightProvider = models?.find(m => m.id === rightModel)?.provider || 'openai';
+
+            const stream = apiClient.chat.sendStream({
+              question: message,
+              model: rightModel as import("@/lib/api/types").ModelName,
+              provider: rightProvider,
+              session_id: sessionId,
+              system_prompts: selectedSystemPrompts,
+            });
+
+            for await (const chunk of stream) {
+              if (chunk.chunk_type === 'content') {
+                fullContent += chunk.token;
+                setStreamingRight(fullContent); // Update UI incrementally
+              } else if (chunk.chunk_type === 'final' && chunk.done) {
+                fullContent = chunk.full_content || fullContent;
+                usage = chunk.usage;
+                setStreamingRight(fullContent); // Final update
+              }
+            }
+
+            return { content: fullContent, usage };
+          } catch (error) {
+            console.error('Right model streaming error:', error);
+            throw error;
+          }
+        })(),
       ]);
 
-      // Collect responses and token counts
+      // STEP 3: Collect responses and token counts
       const responses: string[] = [];
       let totalTokens = 0;
 
-      // DEBUG: Log raw responses
-      // console.log('🔍 Raw LLM responses:', {
-      //   left: {
-      //     status: leftResponse.status,
-      //     value: leftResponse.status === 'fulfilled' ? leftResponse.value : null,
-      //     reason: leftResponse.status === 'rejected' ? leftResponse.reason : null,
-      //   },
-      //   right: {
-      //     status: rightResponse.status,
-      //     value: rightResponse.status === 'fulfilled' ? rightResponse.value : null,
-      //     reason: rightResponse.status === 'rejected' ? rightResponse.reason : null,
-      //   },
-      // });
-
-      // Handle left model response
-      if (leftResponse.status === "fulfilled") {
-        // Extract token usage (works for OpenAI, Gemini, Groq)
-        const usage = leftResponse.value.usage;
-        // console.log('🔍 Left model usage object:', usage);
+      // Handle left model result
+      if (leftResult.status === "fulfilled") {
+        const { content, usage } = leftResult.value;
+        responses.push(content);
         if (usage) {
           const tokens = usage.total_tokens || usage.total_token_count || 0;
           totalTokens += tokens;
-          // console.log(`🔢 Left model tokens: ${tokens} (total_tokens: ${usage.total_tokens}, total_token_count: ${usage.total_token_count})`);
-        } // else {
-        //   console.warn('⚠️ Left model has NO usage data');
-        // }
-
-        if (leftResponse.value.answer) {
-          // console.log('✅ Left model response:', leftResponse.value.answer.slice(0, 100));
-          responses.push(leftResponse.value.answer);
-        } else if (leftResponse.value.error_message) {
-          console.error('❌ Left model returned error:', leftResponse.value.error_message);
-          setErrorLeft(leftResponse.value.error_message);
-          responses.push(""); // Empty response for error
-        } // else {
-        //   console.warn('⚠️ Left model returned null answer (no error)');
-        //   responses.push(""); // Empty response for null answer
-        // }
+        }
       } else {
-        console.error('❌ Left model promise rejected:', leftResponse.reason);
-        setErrorLeft(leftResponse.reason?.message || "Failed to get response from left model");
-        responses.push(""); // Placeholder for failed response
+        console.error('Left model failed:', leftResult.reason);
+        setErrorLeft(leftResult.reason?.message || "Streaming failed");
+        responses.push(""); // Placeholder
       }
 
-      // Handle right model response
-      if (rightResponse.status === "fulfilled") {
-        // Extract token usage (works for OpenAI, Gemini, Groq)
-        const usage = rightResponse.value.usage;
-        // console.log('🔍 Right model usage object:', usage);
+      // Handle right model result
+      if (rightResult.status === "fulfilled") {
+        const { content, usage } = rightResult.value;
+        responses.push(content);
         if (usage) {
           const tokens = usage.total_tokens || usage.total_token_count || 0;
           totalTokens += tokens;
-          // console.log(`🔢 Right model tokens: ${tokens} (total_tokens: ${usage.total_tokens}, total_token_count: ${usage.total_token_count})`);
-        } // else {
-        //   console.warn('⚠️ Right model has NO usage data');
-        // }
-
-        if (rightResponse.value.answer) {
-          // console.log('✅ Right model response:', rightResponse.value.answer.slice(0, 100));
-          responses.push(rightResponse.value.answer);
-        } else if (rightResponse.value.error_message) {
-          console.error('❌ Right model returned error:', rightResponse.value.error_message);
-          setErrorRight(rightResponse.value.error_message);
-          responses.push(""); // Empty response for error
-        } // else {
-        //   console.warn('⚠️ Right model returned null answer (no error)');
-        //   responses.push(""); // Empty response for null answer
-        // }
+        }
       } else {
-        console.error('❌ Right model promise rejected:', rightResponse.reason);
-        setErrorRight(rightResponse.reason?.message || "Failed to get response from right model");
-        responses.push(""); // Ensure we have 2 elements
+        console.error('Right model failed:', rightResult.reason);
+        setErrorRight(rightResult.reason?.message || "Streaming failed");
+        responses.push(""); // Placeholder
       }
 
-      // console.log('📦 Responses to save:', {
-      //   count: responses.length,
-      //   hasLeft: responses[0]?.length > 0,
-      //   hasRight: responses[1]?.length > 0,
-      //   leftPreview: responses[0]?.slice(0, 50),
-      //   rightPreview: responses[1]?.slice(0, 50),
-      //   totalTokens,
-      // });
-
-      // STEP 3: Update optimistic message with real responses
-      // First, update the cache manually (replace empty llm_responses with real data)
-      // console.log('🔄 Updating optimistic message with real responses');
+      // STEP 4: Update cache with final responses (replace optimistic message)
       queryClient.setQueryData<Prompt[]>(queryKey, (old: Prompt[] | undefined) => {
         if (!old || old.length === 0) return old;
         
-        // Find and update the optimistic message (last message with matching text)
         const lastMessage = old[old.length - 1];
         if (lastMessage && lastMessage.prompt_text === message) {
           return [
             ...old.slice(0, -1),
             {
               ...lastMessage,
-              llm_responses: responses, // Update with real responses
+              llm_responses: responses,
             },
           ];
         }
         return old;
       });
 
-      // STEP 4: Save to backend (this will trigger onSuccess and refetch)
-      // We skip the onMutate hook by updating cache manually above
+      // STEP 5: Save to backend
       await savePrompt.mutateAsync({
         session_id: sessionId,
         prompt_text: message,
-        llm_responses: responses, // Array of [leftResponse, rightResponse]
-        tokens_used: totalTokens, // Total tokens used by both models
+        llm_responses: responses,
+        tokens_used: totalTokens,
       });
 
-      // console.log(`✅ Successfully saved prompt with dual responses (${totalTokens} tokens used)`);
+      // Clear streaming state after successful save
+      setStreamingLeft("");
+      setStreamingRight("");
     } catch (error) {
       console.error("Failed to send message:", error);
       const errorMsg = error instanceof Error ? error.message : "Failed to send message";
@@ -351,16 +378,18 @@ export function DualChatView({ sessionId }: DualChatViewProps) {
       setErrorRight(errorMsg);
       
       // Rollback: Remove optimistic message on error
-      // console.log('❌ Error occurred, rolling back optimistic update');
       queryClient.setQueryData<Prompt[]>(queryKey, (old: Prompt[] | undefined) => {
         if (!old || old.length === 0) return old;
-        // Remove the last message if it matches our optimistic message
         const lastMessage = old[old.length - 1];
         if (lastMessage && lastMessage.prompt_text === message && lastMessage.prompt_id.startsWith('temp-')) {
           return old.slice(0, -1);
         }
         return old;
       });
+
+      // Clear streaming state on error
+      setStreamingLeft("");
+      setStreamingRight("");
     } finally {
       setIsLoadingLeft(false);
       setIsLoadingRight(false);

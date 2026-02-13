@@ -5,6 +5,8 @@
  * They are used throughout the application for type safety.
  */
 
+/* eslint-disable @typescript-eslint/no-unused-vars */
+
 /**
  * Chat Sessions
  */
@@ -62,9 +64,47 @@ export type ModelName =
   | 'llama-3.3-70b-versatile'
   | 'llama-3.1-8b-instant';
 
+/**
+ * Model Discovery
+ */
+export interface ModelInfo {
+  id: string;
+  name: string;
+  provider: string;
+  description?: string;
+  display_name?: string;
+  created?: number;
+  owned_by?: string;
+  active?: boolean;
+}
+
+export interface AllModelsResponse {
+  success: boolean;
+  models: {
+    openai: ModelInfo[];
+    google: ModelInfo[];
+    groq: ModelInfo[];
+  };
+  total_count: {
+    openai: number;
+    google: number;
+    groq: number;
+  };
+}
+
+export interface FeaturedModelsResponse {
+  success: boolean;
+  featured_models: {
+    openai: ModelInfo[];
+    google: ModelInfo[];
+    groq: ModelInfo[];
+  };
+}
+
 export interface ChatRequest {
   question: string;
   model: ModelName;
+  provider: string; // Added provider
   session_id?: string;
   chat_history?: ChatMessage[];
   system_prompts?: string[];
@@ -89,6 +129,27 @@ export interface ChatResponse {
     candidates_token_count?: number;
     total_token_count?: number;
   };
+}
+
+/**
+ * Streaming Chat
+ */
+export interface StreamChunk {
+  token: string;
+  chunk_type: 'content' | 'final';
+  done: boolean;
+  full_content?: string;
+  usage?: {
+    prompt_tokens?: number;
+    completion_tokens?: number;
+    total_tokens?: number;
+    prompt_token_count?: number;
+    candidates_token_count?: number;
+    total_token_count?: number;
+  };
+  model?: string;
+  provider?: string;
+  session_id?: string;
 }
 
 /**

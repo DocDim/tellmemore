@@ -46,17 +46,26 @@ export function ModelSelector({
   excludeModel,
 }: ModelSelectorProps) {
   const [open, setOpen] = useState(false);
-  const { isLoading } = useModels();
+  const { data: models, isLoading } = useModels();
 
-  const selectedModel = getModelById(value);
+  // Find selected model from fetched data or fallback to constants
+  const selectedModel = models?.find((m) => m.id === value) || getModelById(value);
 
-  // Group models by provider
-  const openaiModels = getModelsByProvider(ModelProvider.OPENAI)
-    .filter((m) => m.id !== excludeModel);
-  const googleModels = getModelsByProvider(ModelProvider.GOOGLE)
-    .filter((m) => m.id !== excludeModel);
-  const groqModels = getModelsByProvider(ModelProvider.GROQ)
-    .filter((m) => m.id !== excludeModel);
+  // Group models by provider from fetched data
+  const openaiModels = (models || [])
+    .filter((m) => m.provider === ModelProvider.OPENAI && m.id !== excludeModel);
+  const googleModels = (models || [])
+    .filter((m) => m.provider === ModelProvider.GOOGLE && m.id !== excludeModel);
+  const groqModels = (models || [])
+    .filter((m) => m.provider === ModelProvider.GROQ && m.id !== excludeModel);
+  
+  console.log('[ModelSelector] Models by provider:', {
+    openai: openaiModels.length,
+    google: googleModels.length,
+    groq: groqModels.length,
+    total: (models || []).length,
+    excluded: excludeModel,
+  });
 
   if (isLoading) {
     return (

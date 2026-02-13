@@ -7,9 +7,9 @@ TellMeMore is a modular, multi-service application for interacting with Large La
 ## Architecture
 
 - **Backend-da**: FastAPI service for user management, chat sessions, prompts, quotas, and audit logs. Exposes RESTful endpoints for all core data and user operations. Uses SQLAlchemy for database models and JWT for authentication. All user and session data is managed here.
-- **Backend-llm**: FastAPI service for querying multiple LLM providers (OpenAI, Google Gemini, Groq LLaMA3). Handles chat history, model selection, and response formatting. **Now uses official provider SDKs (OpenAI, Google Gemini, Groq) instead of LangChain. Provider logic is modularized into dedicated service files (e.g., `openai_service.py`, `google_gemini_service.py`, `groq_service.py`).** All LLM requests are routed through this service.
-- **Frontend-ui**: FastAPI-based frontend serving HTML via Jinja2 templates. Handles authentication and dashboard UI, with all business logic in backend APIs. Serves static assets and templates, and passes backend URLs to the frontend for API calls.
-- **Frontend-next** (to be created): Next.js 16 frontend, rebuilt from the logic in Frontend-ui, with a modern React-based UI and a BFF (Backend-for-Frontend) layer for enhanced security and API mediation. The BFF will proxy and validate all API requests, enforce authentication, and prevent direct client access to sensitive backend endpoints.
+- **Backend-llm**: FastAPI service for querying multiple LLM providers (OpenAI, Google Gemini, Groq LLaMA3). Handles chat history, model selection, and response formatting. **Uses a unified LangChain service (`langchain_service.py`) to interface with all providers (`langchain_openai`, `langchain_google_genai`, `langchain_groq`). This service handles model instantiation, message conversion, and streaming responses.** All LLM requests are routed through this service.
+- **Frontend-ui**: FastAPI-based frontend serving HTML via Jinja2 templates (Legacy/Reference). Handles authentication and dashboard UI, with all business logic in backend APIs.
+- **Frontend-next**: Next.js 16 frontend, acting as the primary user interface. It features a modern React-based UI and a BFF (Backend-for-Frontend) layer for enhanced security and API mediation. The BFF proxies and validates all API requests, enforces authentication, and prevents direct client access to sensitive backend endpoints.
 
 ### Service Interactions
 
@@ -19,10 +19,10 @@ TellMeMore is a modular, multi-service application for interacting with Large La
 
 ## Example API Flows
 
-- **User Login:**
-  1. User submits credentials via frontend.
-  2. BFF forwards request to Backend-da `/api/v1/auth/login`.
-  3. Backend-da returns JWT token; BFF sets secure cookie/session.
+- **User Authentication:**
+  1. User logs in via Clerk on Frontend-next.
+  2. Frontend includes Clerk session token in requests to BFF.
+  3. BFF validates token and forwards request to Backend-da with user context.
 - **Chat Session:**
   1. User starts a chat in frontend.
   2. BFF creates session via Backend-da `/api/v1/chat_sessions`.
@@ -49,9 +49,9 @@ TellMeMore is a modular, multi-service application for interacting with Large La
 - Write modular, well-documented code with clear separation of concerns.
 - Prefer async operations and modern Python/JS best practices.
 - Include type hints and docstrings for all functions/classes.
-- Write unit and integration tests for all major features, including new provider service modules.
+- Write unit and integration tests for all major features.
 - Handle errors gracefully and log exceptions with context.
-- **For Backend-llm, all new provider logic must be implemented in dedicated service modules. Legacy LangChain code is deprecated and present only for reference.**
+- **For Backend-llm, all provider logic is centralized in `langchain_service.py`. Use this unified service for adding new models or providers.**
 
 ## Documentation Guidelines
 
@@ -76,7 +76,7 @@ TellMeMore is a modular, multi-service application for interacting with Large La
 - The BFF layer adds security and flexibility for API mediation.
 - Refactoring backend models/code ensures maintainability and professional standards.
 - Legacy FastAPI frontend remains for reference; all new development is in Frontend-next.
-- **Backend-llm now uses official provider SDKs (OpenAI, Google Gemini, Groq) for all LLM operations. Each provider has its own modular service (e.g., `openai_service.py`, `google_gemini_service.py`, `groq_service.py`). This improves reliability, maintainability, and access to the latest features.**
+- **Backend-llm uses a unified LangChain implementation (`langchain_service.py`) for all LLM operations. This provides a consistent interface for streaming and non-streaming requests across different providers (OpenAI, Google, Groq).**
 
 ## Documentation Structure
 
@@ -147,23 +147,23 @@ The chat interface now features a production-ready optimistic UI with instant me
 
 ## Migration Plan
 
-1. Create this instructions file for LLM and contributor context.
-2. Refactor and improve backend models and code in Backend-llm.
-3. **Migrate Backend-llm from LangChain to provider SDKs, modularizing provider logic into dedicated service modules. Remove LangChain dependencies from codebase.**
-4. Add unit and integration tests for new provider service modules.
-5. Build the Next.js 16 frontend in Frontend-next, using a BFF layer and migrating logic from Frontend-ui (see migration docs above).
+1. Create this instructions file for LLM and contributor context. (Completed)
+2. Refactor and improve backend models and code in Backend-llm. (Completed)
+3. **Consolidate Backend-llm provider logic into `langchain_service.py` using `langchain_openai`, `langchain_google_genai`, and `langchain_groq`. (Completed)**
+4. Add unit and integration tests for the unified service. (In Progress)
+5. Build the Next.js 16 frontend in Frontend-next, using a BFF layer and migrating logic from Frontend-ui. (Completed)
 
 ## Key Endpoints
 
 - See `Backend-da/backend_api_endpoints.md` and `Backend-llm/backend_llm_api_endpoints.md` for full API documentation and schemas.
-- **Backend-llm API endpoints remain unchanged, but their implementation now uses provider SDKs and modular service files.**
+- **Backend-llm API endpoints are powered by `langchain_service.py`.**
 
 ## Additional Notes
 
 - Static assets and legacy frontend code will remain in Frontend-ui for reference.
 - All new frontend development will occur in Frontend-next.
 - For questions or major changes, update this file and notify contributors.
-- **Contributors: Use and extend the new provider service modules for all LLM logic. Do not add new LangChain-based code.**
+- **Contributors: Use `langchain_service.py` for all LLM interactions.**
 
 ## Clerk Authentication Integration
 

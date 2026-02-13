@@ -48,6 +48,20 @@ export const MODELS: Model[] = [
     description: "Compact model for simple tasks",
     tier: "lite",
   },
+  {
+    id: "gpt-4o",
+    name: "GPT-4o",
+    provider: ModelProvider.OPENAI,
+    description: "Omni model for complex tasks",
+    tier: "flagship",
+  },
+  {
+    id: "gpt-4o-mini",
+    name: "GPT-4o Mini",
+    provider: ModelProvider.OPENAI,
+    description: "Small and fast model for simple tasks",
+    tier: "mini",
+  },
   
   // Google Gemini Models
   {

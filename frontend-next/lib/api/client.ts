@@ -26,6 +26,8 @@ import type {
   SystemPrompt,
   AuthStatus,
   ApiError,
+  AllModelsResponse,
+  FeaturedModelsResponse,
 } from './types';
 
 /**
@@ -129,13 +131,104 @@ export const promptsApi = {
  */
 export const chatApi = {
   /**
-   * Send a chat message to an LLM
+   * Send a chat message to an LLM (non-streaming)
    */
   send: async (data: ChatRequest): Promise<ChatResponse> => {
     return fetchApi<ChatResponse>('/api/backend-llm/chat', {
       method: 'POST',
       body: JSON.stringify(data),
     });
+  },
+
+  /**
+   * Send a chat message to an LLM with streaming (SSE)
+   * 
+   * Returns an async generator that yields StreamChunk objects.
+   * 
+   * Usage:
+   * ```ts
+   * const stream = chatApi.sendStream({ question: 'Hello', model: 'gpt-5' });
+   * for await (const chunk of stream) {
+   *   console.log(chunk.token); // Display token
+   *   if (chunk.done) {
+   *     console.log('Stream complete:', chunk.full_content);
+   *   }
+   * }
+   * ```
+   */
+  sendStream: async function* (data: ChatRequest): AsyncGenerator<import('./types').StreamChunk> {
+    // Build query params
+    const params = new URLSearchParams({
+      question: data.question,
+      model: data.model,
+      provider: data.provider,
+      stream: 'true',
+      ...(data.session_id && { session_id: data.session_id }),
+    });
+
+    const response = await fetch(`/api/backend-llm/chat?${params.toString()}`, {
+      method: 'GET',
+      headers: {
+        'Accept': 'text/event-stream',
+      },
+    });
+
+    if (!response.ok) {
+      const error: ApiError = await response.json().catch(() => ({
+        error: 'Streaming failed',
+        detail: `HTTP ${response.status}: ${response.statusText}`,
+      }));
+      throw new Error(error.detail || error.error);
+    }
+
+    if (!response.body) {
+      throw new Error('No response body for streaming');
+    }
+
+    // Parse SSE stream
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        
+        if (done) break;
+
+        // Decode chunk and add to buffer
+        buffer += decoder.decode(value, { stream: true });
+
+        // Split by SSE message delimiter (\n\n)
+        const lines = buffer.split('\n\n');
+        
+        // Keep incomplete message in buffer
+        buffer = lines.pop() || '';
+
+        // Process complete messages
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          
+          // SSE format: "data: {json}\n"
+          if (line.startsWith('data: ')) {
+            const jsonStr = line.slice(6); // Remove "data: " prefix
+            try {
+              const chunk = JSON.parse(jsonStr) as import('./types').StreamChunk;
+              yield chunk;
+              
+              // Stop if done
+              if (chunk.done) {
+                return;
+              }
+            } catch (e) {
+              console.error('Failed to parse SSE chunk:', jsonStr, e);
+            }
+          }
+        }
+      }
+    } finally {
+      reader.releaseLock();
+    }
   },
 };
 
@@ -207,6 +300,25 @@ export const authApi = {
 };
 
 /**
+ * Models API
+ */
+export const modelsApi = {
+  /**
+   * Get all available models from all providers
+   */
+  listAll: async (): Promise<AllModelsResponse> => {
+    return fetchApi<AllModelsResponse>('/api/backend-llm/models');
+  },
+
+  /**
+   * Get featured/recommended models
+   */
+  listFeatured: async (): Promise<FeaturedModelsResponse> => {
+    return fetchApi<FeaturedModelsResponse>('/api/backend-llm/models?featured=true');
+  },
+};
+
+/**
  * Combined API client
  */
 export const apiClient = {
@@ -217,4 +329,5 @@ export const apiClient = {
   userPrompts: userPromptsApi,
   systemPrompts: systemPromptsApi,
   auth: authApi,
+  models: modelsApi,
 };

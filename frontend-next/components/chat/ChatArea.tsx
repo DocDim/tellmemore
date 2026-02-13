@@ -16,6 +16,7 @@ interface Message {
   model?: string;
   timestamp: Date;
   isLoading?: boolean;
+  isStreaming?: boolean; // True while actively streaming
   error?: string;
 }
 
@@ -107,8 +108,8 @@ export function ChatArea({
                   <div className="rounded-lg bg-muted px-4 py-3">
                     <div className="flex items-center gap-1">
                       <div className="h-2 w-2 rounded-full bg-muted-foreground/40 animate-pulse" />
-                      <div className="h-2 w-2 rounded-full bg-muted-foreground/40 animate-pulse delay-75" style={{ animationDelay: '75ms' }} />
-                      <div className="h-2 w-2 rounded-full bg-muted-foreground/40 animate-pulse delay-150" style={{ animationDelay: '150ms' }} />
+                      <div className="h-2 w-2 rounded-full bg-muted-foreground/40 animate-pulse [animation-delay:75ms]" />
+                      <div className="h-2 w-2 rounded-full bg-muted-foreground/40 animate-pulse [animation-delay:150ms]" />
                     </div>
                   </div>
                 </div>

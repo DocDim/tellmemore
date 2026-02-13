@@ -48,6 +48,7 @@ export {
 // Models hooks
 export {
   useModels,
+  modelKeys,
 } from './useModels';
 
 // Quota hooks

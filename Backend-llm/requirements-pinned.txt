@@ -1,6 +1,7 @@
 # Backend-llm Python Dependencies
-# Last Updated: January 30, 2025
+# Last Updated: February 9, 2026
 # Python 3.11+
+# LangChain Migration Complete - Using unified LangChain framework with LangSmith observability
 
 # Core FastAPI
 fastapi==0.118.0
@@ -10,14 +11,26 @@ starlette==0.48.0
 # Configuration
 python-dotenv==1.1.1
 
-# LLM Provider SDKs
-openai==2.1.0
-google-generativeai  # Add specific version when available
-groq  # Add specific version when available
+# LangChain Framework
+langchain==1.2.9
+langchain-core==1.2.9
+
+# LangChain Provider Integrations
+langchain-openai==1.1.8
+langchain-google-genai==4.2.0
+langchain-groq==1.1.2
+
+# LangSmith Observability
+langsmith==0.7.1
+
+# LLM Provider SDKs (keep for direct SDK fallback if needed)
+openai==2.18.0
+google-generativeai==0.8.6
+groq==0.37.1
 
 # Data Validation
-pydantic==2.11.9
-pydantic_core==2.33.2
+pydantic==2.12.5
+pydantic_core==2.41.5
 
 # HTTP
 httpx==0.28.1
@@ -27,6 +40,11 @@ h11==0.16.0
 # Utilities
 typing_extensions==4.15.0
 annotated-types==0.7.0
+jsonpatch==1.33
+PyYAML==6.0.3
+tenacity==9.1.4
+packaging==26.0
+orjson==3.11.7
 
 # Testing
 pytest==8.3.4

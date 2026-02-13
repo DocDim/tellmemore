@@ -52,27 +52,6 @@ interface ErrorResponse {
 }
 
 /**
- * Model configurations
- * Maps model names to their provider
- * Source: Backend-llm/api/pydantic_models.py ModelName enum
- */
-const MODEL_PROVIDER_MAP: Record<string, 'openai' | 'google' | 'groq'> = {
-  // OpenAI models
-  'gpt-5': 'openai',
-  'gpt-5-mini': 'openai',
-  'gpt-nano': 'openai',
-
-  // Google Gemini models
-  'gemini-2.5-pro': 'google',
-  'gemini-2.5-flash': 'google',
-  'gemini-2.5-flash-lite': 'google',
-
-  // Groq LLaMA models
-  'llama-3.3-70b-versatile': 'groq',
-  'llama-3.1-8b-instant': 'groq',
-};
-
-/**
  * POST /api/backend-llm/chat
  * 
  * Send a chat message to the specified LLM model.
@@ -116,7 +95,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<ChatRespo
     }
 
     // Validate required fields
-    const { question, model, session_id, chat_history } = body as ChatRequest;
+    const { question, model, provider, session_id, chat_history } = body as ChatRequest;
 
     if (!question || typeof question !== 'string' || question.trim().length === 0) {
       return NextResponse.json(
@@ -132,15 +111,9 @@ export async function POST(request: NextRequest): Promise<NextResponse<ChatRespo
       );
     }
 
-    // Determine provider from model name
-    const provider = MODEL_PROVIDER_MAP[model];
-
-    if (!provider) {
+    if (!provider || typeof provider !== 'string') {
       return NextResponse.json(
-        { 
-          error: 'Bad request', 
-          detail: `Unknown model: ${model}. Supported models: ${Object.keys(MODEL_PROVIDER_MAP).join(', ')}` 
-        },
+        { error: 'Bad request', detail: 'Missing or invalid "provider" field' },
         { status: 400 }
       );
     }
@@ -199,6 +172,134 @@ export async function POST(request: NextRequest): Promise<NextResponse<ChatRespo
     return NextResponse.json(chatResponse, { status: 200 });
   } catch (error) {
     console.error('BFF error in POST /api/backend-llm/chat:', error);
+    
+    return NextResponse.json(
+      { 
+        error: 'Internal server error', 
+        detail: error instanceof Error ? error.message : 'Unknown error' 
+      },
+      { status: 500 }
+    );
+  }
+}
+
+/**
+ * GET /api/backend-llm/chat?stream=true&model=gpt-5&question=Hello&session_id=123
+ * 
+ * Stream chat responses from LLM using Server-Sent Events (SSE).
+ * 
+ * Authentication: Required (Clerk JWT)
+ * 
+ * Query Parameters:
+ * - question: string (required) - The user's message/prompt
+ * - model: string (required) - Model name (e.g., "gpt-5", "gemini-2.5-flash")
+ * - stream: boolean (required) - Must be "true" for streaming
+ * - session_id: string (optional) - Chat session ID
+ * 
+ * Response:
+ * - 200: text/event-stream (SSE)
+ *   - Content chunks: data: {"token": "Hello", "chunk_type": "content", "done": false}\n\n
+ *   - Final chunk: data: {"token": "", "chunk_type": "final", "done": true, "full_content": "...", "usage": {...}}\n\n
+ * - 400: Bad request (invalid parameters)
+ * - 401: Unauthorized (no valid Clerk session)
+ * - 502: Bad gateway (LLM service error)
+ */
+export async function GET(request: NextRequest): Promise<Response> {
+  try {
+    // Authenticate user via Clerk
+    const { userId } = await auth();
+    
+    if (!userId) {
+      return NextResponse.json(
+        { error: 'Unauthorized', detail: 'No valid Clerk session found' },
+        { status: 401 }
+      );
+    }
+
+    // Parse query parameters
+    const searchParams = request.nextUrl.searchParams;
+    const question = searchParams.get('question');
+    const model = searchParams.get('model');
+    const provider = searchParams.get('provider');
+    const stream = searchParams.get('stream');
+    const session_id = searchParams.get('session_id');
+
+    // Validate required parameters
+    if (!question || question.trim().length === 0) {
+      return NextResponse.json(
+        { error: 'Bad request', detail: 'Missing or empty "question" parameter' },
+        { status: 400 }
+      );
+    }
+
+    if (!model) {
+      return NextResponse.json(
+        { error: 'Bad request', detail: 'Missing "model" parameter' },
+        { status: 400 }
+      );
+    }
+
+    if (!provider) {
+      return NextResponse.json(
+        { error: 'Bad request', detail: 'Missing "provider" parameter' },
+        { status: 400 }
+      );
+    }
+
+    if (stream !== 'true') {
+      return NextResponse.json(
+        { error: 'Bad request', detail: 'Missing or invalid "stream" parameter (must be "true")' },
+        { status: 400 }
+      );
+    }
+
+    // Prepare query params for Backend-llm
+    const backendParams = new URLSearchParams({
+      question: question.trim(),
+      session_id: session_id || '',
+    });
+
+    // Call Backend-llm streaming endpoint
+    const backendUrl = `${env.server.backendLlmUrl}/chat/${provider}/${model}/stream?${backendParams.toString()}`;
+    
+    const backendResponse = await fetch(backendUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        question: question.trim(),
+        session_id: session_id || undefined,
+        chat_history: [], // TODO: Support chat history in streaming
+      }),
+    });
+
+    if (!backendResponse.ok) {
+      const errorData = await backendResponse.json().catch(() => ({ detail: 'Unknown error' }));
+      console.error('Backend-llm streaming error:', errorData);
+      
+      return NextResponse.json(
+        { 
+          error: 'LLM service error', 
+          detail: errorData.detail || errorData.error_message || 'Failed to start streaming from LLM' 
+        },
+        { status: 502 }
+      );
+    }
+
+    // Proxy the SSE stream from Backend-llm to the client
+    // This passes through the ReadableStream without buffering
+    return new Response(backendResponse.body, {
+      status: 200,
+      headers: {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache, no-transform',
+        'Connection': 'keep-alive',
+        'X-Accel-Buffering': 'no',
+      },
+    });
+  } catch (error) {
+    console.error('BFF error in GET /api/backend-llm/chat (streaming):', error);
     
     return NextResponse.json(
       { 
